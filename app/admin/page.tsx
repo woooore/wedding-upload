@@ -50,6 +50,25 @@ export default function AdminPage() {
     }
   };
 
+  // 컴포넌트 내부에 다운로드 처리 함수 추가
+const handleDownload = async (url: string, filename: string) => {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('다운로드 오류:', error);
+    // 모바일 등에서 직접 fetch가 차단될 경우 새 창으로 열어서 길게 눌러 저장 유도
+    window.open(url, '_blank');
+  }
+};
   // 로그인 전 화면
   if (!isAuthenticated) {
     return (
@@ -134,15 +153,16 @@ export default function AdminPage() {
                       {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
 
-                    <a
-                      href={item.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      download
-                      className="mt-2 block text-center w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded-lg text-[11px] font-medium"
-                    >
+                    <button
+                      type="button"
+                      onClick={() => {
+                      const ext = item.file_url.split('.').pop() || 'jpg';
+                      handleDownload(item.file_url, `${item.uploader_name}_${item.id}.${ext}`);
+                      }}
+                      className="mt-2 block text-center w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded-lg text-[11px] font-medium transition"
+                      >
                       원본 다운로드 ⬇️
-                    </a>
+                    </button>
                   </div>
                 </div>
               );

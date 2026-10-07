@@ -9,7 +9,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // 🔒 관리자 접속 비밀번호
-const ADMIN_PASSWORD = '1234';
+const ADMIN_PASSWORD = '0215';
 
 interface Submission {
   id: number;
@@ -75,21 +75,28 @@ export default function AdminPage() {
     if (!isConfirm) return;
 
     try {
-      // 1. Storage에서 파일명 추출 후 삭제
-      const fileName = item.file_url.split('/').pop();
-      if (fileName) {
-        await supabase.storage.from('wedding-media').remove([fileName]);
-      }
-
-      // 2. DB submissions 테이블에서 삭제
+      // 1. DB submissions 테이블에서 삭제
       const { error: dbError } = await supabase
         .from('submissions')
         .delete()
         .eq('id', item.id);
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        throw new Error(`DB 삭제 실패: ${dbError.message}`);
+      }
 
-      // 3. 화면 목록에서 바로 제거
+      // 2. Storage에서 파일명 추출 후 삭제
+      const fileName = item.file_url.split('/').pop();
+      if (fileName) {
+        const { error: storageError } = await supabase.storage
+          .from('wedding-media')
+          .remove([fileName]);
+        if (storageError) {
+          console.warn('스토리지 파일 삭제 실패 (DB는 삭제됨):', storageError.message);
+        }
+      }
+
+      // 3. 실제 DB 삭제가 성공한 경우에만 화면 목록에서 제거
       setSubmissions((prev) => prev.filter((sub) => sub.id !== item.id));
       alert('성공적으로 삭제되었습니다.');
     } catch (err: any) {

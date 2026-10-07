@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qrwqytqwzikfeunkjdnl.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_B9OE7c4fz3viEKuNSbgQpg_rCOKxDly';
 
-// 관리자 접속 비밀번호 (원하시는 비밀번호로 변경하세요)
-const ADMIN_PASSWORD = '9986';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// 🔒 관리자 접속 비밀번호
+const ADMIN_PASSWORD = '1234';
 
 interface Submission {
   id: number;
@@ -50,25 +50,54 @@ export default function AdminPage() {
     }
   };
 
-  // 컴포넌트 내부에 다운로드 처리 함수 추가
-const handleDownload = async (url: string, filename: string) => {
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(blobUrl);
-  } catch (error) {
-    console.error('다운로드 오류:', error);
-    // 모바일 등에서 직접 fetch가 차단될 경우 새 창으로 열어서 길게 눌러 저장 유도
-    window.open(url, '_blank');
-  }
-};
+  // 파일 강제 다운로드 함수
+  const handleDownload = async (url: string, filename: string) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('다운로드 오류:', error);
+      window.open(url, '_blank');
+    }
+  };
+
+  // 사진 삭제 함수 (Storage 원본 + DB 동시 삭제)
+  const handleDelete = async (item: Submission) => {
+    const isConfirm = window.confirm(`[${item.uploader_name}] 님이 올린 사진을 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.`);
+    if (!isConfirm) return;
+
+    try {
+      // 1. Storage에서 파일명 추출 후 삭제
+      const fileName = item.file_url.split('/').pop();
+      if (fileName) {
+        await supabase.storage.from('wedding-media').remove([fileName]);
+      }
+
+      // 2. DB submissions 테이블에서 삭제
+      const { error: dbError } = await supabase
+        .from('submissions')
+        .delete()
+        .eq('id', item.id);
+
+      if (dbError) throw dbError;
+
+      // 3. 화면 목록에서 바로 제거
+      setSubmissions((prev) => prev.filter((sub) => sub.id !== item.id));
+      alert('성공적으로 삭제되었습니다.');
+    } catch (err: any) {
+      console.error(err);
+      alert(`삭제 중 오류가 발생했습니다: ${err.message || '다시 시도해주세요.'}`);
+    }
+  };
+
   // 로그인 전 화면
   if (!isAuthenticated) {
     return (
@@ -134,7 +163,7 @@ const handleDownload = async (url: string, filename: string) => {
                       <img
                         src={item.file_url}
                         alt={item.uploader_name}
-                        className="w-full h-full object-cover hover:scale-105 transition duration-200"
+                        className="w-full h-full object-cover"
                       />
                     )}
                   </div>
@@ -153,16 +182,27 @@ const handleDownload = async (url: string, filename: string) => {
                       {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                      const ext = item.file_url.split('.').pop() || 'jpg';
-                      handleDownload(item.file_url, `${item.uploader_name}_${item.id}.${ext}`);
-                      }}
-                      className="mt-2 block text-center w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded-lg text-[11px] font-medium transition"
+                    <div className="pt-2 flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ext = item.file_url.split('.').pop() || 'jpg';
+                          handleDownload(item.file_url, `${item.uploader_name}_${item.id}.${ext}`);
+                        }}
+                        className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded-lg text-[11px] font-medium transition"
                       >
-                      원본 다운로드 ⬇️
-                    </button>
+                        원본 다운로드 ⬇️
+                      </button>
+
+                      {/* 🗑️ 삭제 버튼 */}
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(item)}
+                        className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 py-1.5 rounded-lg text-[11px] font-medium transition"
+                      >
+                        삭제 🗑️
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
